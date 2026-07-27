@@ -1,9 +1,9 @@
 name: Daily News Bot
 
 on:
-  # Chạy mỗi ngày lúc 10:00 AM UTC (tương đương 5:00 PM GMT+7 - Việt Nam)
+  # Chạy mỗi ngày lúc 10:00 AM Việt Nam (GMT+7) = 3:00 AM UTC
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '0 3 * * *'
   
   # Cho phép chạy thủ công từ Actions tab
   workflow_dispatch:
