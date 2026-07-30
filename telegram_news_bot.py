@@ -1,65 +1,64 @@
 #!/usr/bin/env python3
 """
 Telegram News Bot - Tự động gửi tin tức mỗi ngày lúc 10:00 AM
-Gửi: Việt Nam (10 tin) + Thế giới (20 tin) + Ba Lan (10 tin, ưu tiên 5 tin di trú)
-Mỗi tin đều có link nguồn tham khảo
+Ngăn chặn lặp tin bằng tracking ID đã gửi
 """
 
 import requests
-from datetime import datetime
-
-# ========================
-# CẤU HÌNH — Tự động load từ environment variables hoặc file config
-# ========================
+import json
+from datetime import datetime, timedelta
 import os
 
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8892609299:AAF_9n9XgGuAXZD-nZ8Rl0vIzXSJ_mS2Qd8')
-CHAT_ID = os.getenv('CHAT_ID', '5439095079')
+# ========================
+# CẤU HÌNH
+# ========================
+BOT_TOKEN = "8892609299:AAF_9n9XgGuAXZD-nZ8Rl0vIzXSJ_mS2Qd8"
+CHAT_ID = "5439095079"
+SENT_FILE = "sent_news_ids.txt"
 # ========================
 
 
-def send_message(text: str) -> bool:
-    """Gửi message đến Telegram (dùng MarkdownV2 mode để tránh lỗi HTML)"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    
-    # Telegram giới hạn 4096 ký tự/message → chia nhỏ nếu cần
-    max_length = 4000
-    chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
-    
-    success = True
-    for idx, chunk in enumerate(chunks):
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": chunk,
-            "parse_mode": "Markdown",
-            "disable_web_page_preview": False
-        }
-        try:
-            response = requests.post(url, json=payload, timeout=30)
-            if not response.ok:
-                print(f"❌ Lỗi Telegram (chunk {idx}): {response.text}")
-                success = False
-            else:
-                print(f"✅ Chunk {idx} gửi thành công!")
-        except Exception as e:
-            print(f"❌ Exception chunk {idx}: {e}")
-            success = False
-    
-    return success
+def load_sent_ids() -> set:
+    """Tải danh sách tin đã gửi từ file local"""
+    try:
+        with open(SENT_FILE, "r", encoding="utf-8") as f:
+            lines = f.read().strip().split("\n")
+            return set(line.strip() for line in lines if line.strip())
+    except FileNotFoundError:
+        return set()
 
 
-def build_daily_news() -> str:
-    """Xây dựng nội dung tin tức hàng ngày với link nguồn"""
+def save_sent_ids(sent_ids: set):
+    """Lưu danh sách tin đã gửi"""
+    with open(SENT_FILE, "w", encoding="utf-8") as f:
+        for sid in sorted(sent_ids):
+            f.write(sid + "\n")
+
+
+def news_id(item_type: str, idx: int, link: str) -> str:
+    """Tạo ID duy nhất cho từng tin"""
+    return f"{item_type}_{idx}_{link}"
+
+
+def filter_duplicates(news_items: list, already_sent: set) -> tuple:
+    """Lọc ra tin chưa từng gửi, cập nhật danh sách đã gửi"""
+    new_items = []
+    for item in news_items:
+        tid = item["id"]
+        if tid not in already_sent:
+            new_items.append(item)
+            already_sent.add(tid)
+    return new_items, already_sent
+
+
+def build_daily_news() -> tuple:
+    """Xây dựng nội dung tin tức hàng ngày với filtering"""
     
     today = datetime.now().strftime("%d/%m/%Y")
+    already_sent = load_sent_ids()
     
-    # Helper function để tạo message với link
-    def news_item(title: str, link: str, flag: str = "") -> str:
-        """Tạo một tin tức với link"""
-        return f"{flag}{title} [🔗 Link nguồn]({link})"
-    
-    # Dữ liệu tin tức với link nguồn
-    vn_news = [
+    # === Tin Việt Nam ===
+    vn_raw = [
         ("Ngày Thương binh - Liệt sĩ 27/7: Chiến dịch '500 ngày đêm' tìm kiếm hài cốt — gần 1.500 hài cốt đã được quy tập", 
          "https://thanhnien.vn/79-nam-ngay-thuong-binh-liet-si-2771947-2772026-chien-dich-dac-biet-giua-thoi-binh-185260726214212417.htm"),
         ("Tàu Việt Nam chìm ở Biển Đông (Khôi Nguyên 18): 17 người mất tích, lực lượng VN-Trung Quốc điều động máy bay, tàu tìm kiếm", 
@@ -81,8 +80,10 @@ def build_daily_news() -> str:
         ("Metro số 6 đề xuất 2 ga ngầm kết nối sân bay Tân Sơn Nhất; Sân bay Phú Quốc sẵn sàng đón máy bay thân rộng cho APEC 2027", 
          "https://vietnamnet.vn/thoi-su")
     ]
+    vn_items = [{"id": news_id("VN", i, l), "title": t, "link": l} for i, (t, l) in enumerate(vn_raw, 1)]
     
-    world_news = [
+    # === Tin Thế giới ===
+    world_raw = [
         ("Mỹ và Iran tạm ngừng tấn công — Hiệp thương ngừng bắn đang diễn ra tại Dubai", 
          "https://apnews.com/article/iran-war-united-states-ceasefire-ad9fa27d5b1b5fd51e30d923ee738238"),
         ("Houthis tấn công Saudi Arabia: Mở mặt trận mới, đánh vào cơ sở dầu khí chiến lược tại Biển Đỏ", 
@@ -124,8 +125,10 @@ def build_daily_news() -> str:
         ("EU tranh luận về tương lai chính sách di cư", 
          "https://www.bbc.com/news/world")
     ]
+    world_items = [{"id": news_id("WORLD", i, l), "title": t, "link": l} for i, (t, l) in enumerate(world_raw, 1)]
     
-    poland_news = [
+    # === Tin Ba Lan ===
+    poland_raw = [
         ("Kỷ lục trục xuất di dân: 5.640 người trong nửa đầu 2026 (+28%), lệnh cấm Schengen 5-10 năm", 
          "https://www.visahq.news/2026-07-24/pl/poland-sets-new-record-for-migrant-deportations-in-first-half-of-2026/"),
         ("Siết chặt lao động nước ngoài: Gây khó khăn cho doanh nghiệp, lao động phi EU đóng góp 10,7% GDP", 
@@ -147,8 +150,10 @@ def build_daily_news() -> str:
         ("Căng thẳng cộng đồng Muslim tại Kraków", 
          "https://brusselssignal.eu/2026/07/poland-takes-control-of-illegal-border-crossings-in-the-east-but-leaves-backdoor-open/")
     ]
+    poland_items = [{"id": news_id("POLAND", i, l), "title": t, "link": l} for i, (t, l) in enumerate(poland_raw, 1)]
     
-    immigration_priority = [
+    # === Tin di trú ưu tiên ===
+    imm_raw = [
         ("Kỷ lục trục xuất: 5.640 người bị trục xuất trong 6 tháng đầu 2026 (+28% YoY), kèm lệnh cấm Schengen 5-10 năm", 
          "https://www.visahq.news/2026-07-24/pl/poland-sets-new-record-for-migrant-deportations-in-first-half-of-2026/"),
         ("Siết chặt lao động: Hạn chế visa phi EU, doanh nghiệp thiếu nhân công trầm trọng", 
@@ -160,60 +165,104 @@ def build_daily_news() -> str:
         ("Lao động châu Phi: Vẫn cấp 20.000+ giấy phép lao động, chiếm 10,7% GDP", 
          "https://brusselssignal.eu/2026/07/poland-takes-control-of-illegal-border-crossings-in-the-east-but-leaves-backdoor-open/")
     ]
+    imm_items = [{"id": news_id("IMMIGRATION", i, l), "title": t, "link": l} for i, (t, l) in enumerate(imm_raw, 1)]
+    
+    # Lọc tin mới
+    vn_new, already_sent = filter_duplicates(vn_items, already_sent)
+    world_new, already_sent = filter_duplicates(world_items, already_sent)
+    poland_new, already_sent = filter_duplicates(poland_items, already_sent)
+    imm_new, already_sent = filter_duplicates(imm_items, already_sent)
+    
+    # Lưu vào file
+    save_sent_ids(already_sent)
     
     # Build output
     output = []
-    output.append(f"*📰 TIN TỨC HÀNG NGÀY*")
+    output.append("*📰 TIN TỨC HÀNG NGÀY*")
     output.append(f"*📅 {today}*")
     output.append("")
     
-    # Việt Nam
-    output.append("*🇻🇳 VIỆT NAM — 10 TIN NỔI BẬT*")
-    for idx, (title, link) in enumerate(vn_news, 1):
-        output.append(f"{idx}. {title}")
-        output.append(f"   [🔗 Link nguồn]({link})")
-    output.append("")
+    if vn_new:
+        output.append("*🇻🇳 VIỆT NAM — {} TIN MỚI*".format(len(vn_new)))
+        for item in vn_new[:10]:
+            output.append(f"1. {item['title']}")
+            output.append(f"   [🔗 Link nguồn]({item['link']})")
+        output.append("")
     
-    # Thế giới
-    output.append("*🌍 THẾ GIỚI — 20 TIN NỔI BẬT*")
-    for idx, (title, link) in enumerate(world_news, 1):
-        output.append(f"{idx}. {title}")
-        output.append(f"   [🔗 Link nguồn]({link})")
-    output.append("")
+    if world_new:
+        output.append("*🌍 THẾ GIỚI — {} TIN MỚI*".format(len(world_new)))
+        for item in world_new[:20]:
+            output.append(f"1. {item['title']}")
+            output.append(f"   [🔗 Link nguồn]({item['link']})")
+        output.append("")
     
-    # Ba Lan
-    output.append("*🇵🇱 BA LAN — 10 TIN NỔI BẬT*")
-    for idx, (title, link) in enumerate(poland_news, 1):
-        output.append(f"{idx}. {title}")
-        output.append(f"   [🔗 Link nguồn]({link})")
-    output.append("")
+    if poland_new:
+        output.append("*🇵🇱 BA LAN — {} TIN MỚI*".format(len(poland_new)))
+        for item in poland_new[:10]:
+            output.append(f"1. {item['title']}")
+            output.append(f"   [🔗 Link sources]({item['link']})")
+        output.append("")
     
-    # Di trú ưu tiên
-    output.append("*🚨 5 TIN DI TRÚ BA LAN (Ưu tiên)*")
-    for idx, (title, link) in enumerate(immigration_priority, 1):
-        output.append(f"{idx}. {title}")
-        output.append(f"   [🔗 Link nguồn]({link})")
-    output.append("")
+    if imm_new:
+        output.append("*🚨 5 TIN DI TRÚ BA LAN (Ưu tiên)*")
+        for item in imm_new[:5]:
+            output.append(f"1. {item['title']}")
+            output.append(f"   [🔗 Link nguồn]({item['link']})")
+        output.append("")
     
     output.append("_🤖 Auto-generated by Telegram News Bot_")
     
-    return "\n".join(output)
+    return "\n".join(output), len(vn_new) + len(world_new) + len(poland_new) + len(imm_new)
+
+
+def send_message(text: str, max_retries=3) -> bool:
+    """Gửi message đến Telegram với retry"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    
+    max_length = 4000
+    chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
+    
+    success = False
+    for chunk_idx, chunk in enumerate(chunks):
+        for attempt in range(max_retries):
+            payload = {
+                "chat_id": CHAT_ID,
+                "text": chunk,
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True
+            }
+            try:
+                response = requests.post(url, json=payload, timeout=30)
+                if response.ok:
+                    success = True
+                    print(f"✅ Chunk {chunk_idx} gửi thành công!")
+                    break
+                else:
+                    print(f"❌ Lỗi attempt {attempt+1}: {response.text}")
+            except Exception as e:
+                print(f"❌ Exception attempt {attempt+1}: {e}")
+            
+            if not success and attempt < max_retries - 1:
+                import time
+                time.sleep(2)
+    
+    return success
 
 
 def main():
     """Hàm chính"""
     print("🚀 Đang chuẩn bị tin tức...")
     
-    news_content = build_daily_news()
+    news_content, new_count = build_daily_news()
     
     print(f"📝 Nội dung: {len(news_content)} ký tự")
+    print(f"🆕 Tin mới: {new_count} tin")
     
     if send_message(news_content):
         print("✅ Gửi thành công!")
     else:
         print("❌ Gửi thất bại!")
     
-    # Log lại nội dung vào file
     log_file = f"news_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(log_file, "w", encoding="utf-8") as f:
         f.write(news_content)
