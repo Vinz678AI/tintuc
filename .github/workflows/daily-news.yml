@@ -1,11 +1,11 @@
 name: Daily News Bot
 
 on:
-  # Chạy mỗi ngày lúc 10:00 AM Ba Lan (CEST, UTC+2) = 8:00 AM UTC
+  # Chạy mỗi ngày lúc 10:00 AM UTC (8:00 AM giờ Ba Lan, 4:00 PM Việt Nam)
   schedule:
     - cron: '0 8 * * *'
   
-  # Cho phép chạy thủ công từ Actions tab
+  # Cho phép chạy thủ công
   workflow_dispatch:
 
 jobs:
@@ -22,12 +22,12 @@ jobs:
           python-version: '3.11'
       
       - name: Install dependencies
-        run: |
-          pip install requests
+        run: pip install requests
       
       - name: Run news bot
-        run: |
-          python telegram_news_bot.py
+        run: python telegram_news_bot.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
