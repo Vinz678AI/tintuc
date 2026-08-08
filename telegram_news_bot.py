@@ -2,9 +2,9 @@
 """
 Telegram News Bot - TIN TỨC TIẾNG VIỆT (Tổng hợp)
 - Chỉ cần 3 secrets: BOT_TOKEN, CHAT_ID, GIST_ID
-- Tin tiếng Việt từ các nguồn Việt Nam
+- Tin TIẾNG VIỆT từ các nguồn Việt Nam
 - Tổng hợp theo chủ đề
-- Không trùng lặp hoàn toàn
+- Không trùng lặp
 """
 
 import os
@@ -29,16 +29,16 @@ if not BOT_TOKEN or not CHAT_ID:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# RSS Feeds TIẾNG VIỆT
+# RSS Feeds TIẾNG VIỆT (TỪ NGUỒN CHÍNH THỨC)
 RSS_FEEDS = {
     'vietnam': [
-        'https://e.vnexpress.net/rss/news.rss',
-        'https://rss.vietnamnet.vn/rss/vn.rss',
-        'https://dantri.com.vn/rdf/rdf.aspx?id=rss_latest',
-        'https://cafef.vn/rss/tintuc.rss'
+        'https://vnexpress.net/rss/tin-moi-nhat.rss',
+        'https://vnexpress.net/rss/tin-tuc.rss',
+        'https://nhipcaudautu.vn/rss/tintuc.rss',
+        'https://cafef.vn/rss/homepage.cafef'
     ],
     'world': [
-        'https://rsshub.app/bbc/chinese'
+        'https://rsshub.app/bbc/vietnamese'
     ],
     'poland': [
         'https://rp.pl/rss_main'
@@ -50,19 +50,23 @@ RSS_FEEDS = {
 
 # Chủ đề để tổng hợp
 TOPICS = {
-    'chinh-tri': ['chính trị', 'chính quyền', 'quốc hội', 'thủ tướng', 'tổng thống', 'bầu cử', 'luật'],
-    'kinh-te': ['kinh tế', 'gdp', 'lạm phát', 'tiền tệ', 'ngân hàng', 'chứng khoán', 'đầu tư', 'doanh nghiệp'],
-    'xã-hội': ['xã hội', 'giáo dục', 'y tế', 'bạo lực', 'tai nạn', 'mưa bão', 'thiên tai'],
-    'quốc-phòng': ['quốc phòng', 'quân sự', 'biên giới', 'biển đảo', 'hải quân', 'không quân'],
+    'chinh-tri': ['chính trị', 'chính quyền', 'quốc hội', 'thủ tướng', 'tổng thống', 'bầu cử', 'luật', 'chủ tịch', 'bộ trưởng'],
+    'kinh-te': ['kinh tế', 'gdp', 'lạm phát', 'tiền tệ', 'ngân hàng', 'chứng khoán', 'đầu tư', 'doanh nghiệp', 'vốn', 'thị trường'],
+    'xã-hội': ['xã hội', 'giáo dục', 'y tế', 'bạo lực', 'tai nạn', 'mưa bão', 'thiên tai', 'đời sống', 'người dân'],
+    'quốc-phòng': ['quốc phòng', 'quân sự', 'biên giới', 'biển đảo', 'hải quân', 'không quân', 'qpsl', 'quân đội'],
     'the-gioi': ['trung quốc', 'nga', 'mỹ', 'liên hiệp âu', 'âu', 'ấn độ', 'trung đông', 'ukraine', 'israel', 'iran', 'houthi', 'xung đột'],
-    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người ukraine', 'ukraine', 'hồng giáo', 'lao động'],
-    'di-trú': ['di trú', 'visa', 'thị thực', 'tạm trú', 'thường trú', 'quốc tịch', 'trục xuất', 'lao động nước ngoài', 'paperwork', 'praca', 'zakit', 'zameldowanie']
+    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người ukraine', 'ukraine', 'hồng giáo', 'lao động', 'visa', 'paperwork'],
+    'di-trú': ['di trú', 'visa', 'thị thực', 'tạm trú', 'thường trú', 'quốc tịch', 'trục xuất', 'lao động nước ngoài', 'zakit', 'zameldowanie', 'praca']
 }
 
 def fetch_rss(url):
     try:
-        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-        return urlopen(req, timeout=10).read().decode('utf-8', errors='ignore')
+        req = Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml'
+        })
+        response = urlopen(req, timeout=15)
+        return response.read().decode('utf-8', errors='ignore')
     except Exception as e:
         logger.warning(f"Failed to fetch {url}: {e}")
         return None
@@ -72,6 +76,7 @@ def parse_rss(xml):
     try:
         root = ET.fromstring(xml)
         
+        # Atom format
         for entry in root.findall('.//{http://www.w3.org/2005/Atom}entry'):
             title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
             link_elem = entry.find('{http://www.w3.org/2005/Atom}link')
@@ -86,6 +91,7 @@ def parse_rss(xml):
                         'url': link.strip()
                     })
         
+        # RSS 2.0 format
         if not articles:
             for item in root.findall('.//item'):
                 title_elem = item.find('title')
@@ -178,22 +184,22 @@ def send_message(message):
             headers={'Content-Type': 'application/json'}
         )
         result = urlopen(req, timeout=10).read().decode()
-        logger.info(f"Sent: {len(message)} chars")
+        logger.info(f"Sent message: {len(message)} chars")
         return result
     except Exception as e:
         logger.error(f"Send error: {e}")
         return None
 
 def main():
-    logger.info("Starting news bot...")
+    logger.info("Starting Vietnamese news bot...")
     logger.info(f"GIST_ID: {GIST_ID[:20] if GIST_ID else 'None'}")
     
     sent_ids = load_sent_ids()
     logger.info(f"Already sent: {len(sent_ids)} articles")
     
     categories = {
-        'vietnam': ('🇻🇳 TIN VIỆT NAM', 10),
-        'world': ('🌍 TIN THẾ GIỚI', 15),
+        'vietnam': ('🇻🇳 TIN VIỆT NAM', 15),
+        'world': ('🌍 TIN THẾ GIỚI', 10),
         'poland': ('🇵🇱 TIN BA LAN', 10),
         'immigration': ('✈️ TIN DI TRÚ BA LAN', 5)
     }
@@ -225,7 +231,6 @@ def main():
     
     if not all_new_ids:
         logger.info("No new articles to send")
-        # Send notification that no new news
         msg = "<b>📰 TIN TỨC HÔM NAY</b>\n\n"
         msg += "Không có tin mới hôm nay.\n"
         msg += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
@@ -262,7 +267,7 @@ def main():
     
     # Also send summary by source
     summary_msg = f"<b>📰 TÓM TẮT TIN TỨC</b>\n\n"
-    summary_msg += f"🇻🇳 Việt Nam: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['vnexpress', 'vietnamnet', 'dantri', 'cafef'])])} tin\n"
+    summary_msg += f"🇻🇳 Việt Nam: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['vnexpress', 'dantri', 'cafef', 'nhip caudau'])])} tin\n"
     summary_msg += f"🌍 Thế giới: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['bbc', 'trung quốc', 'nga', 'mỹ', 'âu'])])} tin\n"
     summary_msg += f"🇵🇱 Ba Lan: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw'])])} tin\n"
     summary_msg += f"✈️ Di trú: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['di trú', 'visa', 'thị thực', 'người ukraine'])])} tin\n"
