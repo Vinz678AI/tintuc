@@ -1,0 +1,19 @@
+name: Daily News (Simple - No Duplicates)
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-news:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Send news
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        GIST_ID: ${{ secrets.GIST_ID }}
+      run: |
+        python telegram_news_bot.py
