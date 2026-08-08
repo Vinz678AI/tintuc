@@ -4,7 +4,7 @@ Telegram News Bot - TIN TỨC TIẾNG VIỆT (Tổng hợp)
 - Chỉ cần 3 secrets: BOT_TOKEN, CHAT_ID, GIST_ID
 - Tin tiếng Việt từ các nguồn Việt Nam
 - Tổng hợp theo chủ đề
-- Không trùng lặp
+- Không trùng lặp hoàn toàn
 """
 
 import os
@@ -55,7 +55,7 @@ TOPICS = {
     'xã-hội': ['xã hội', 'giáo dục', 'y tế', 'bạo lực', 'tai nạn', 'mưa bão', 'thiên tai'],
     'quốc-phòng': ['quốc phòng', 'quân sự', 'biên giới', 'biển đảo', 'hải quân', 'không quân'],
     'the-gioi': ['trung quốc', 'nga', 'mỹ', 'liên hiệp âu', 'âu', 'ấn độ', 'trung đông', 'ukraine', 'israel', 'iran', 'houthi', 'xung đột'],
-    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người україna', 'ukraine', 'hồng giáo', 'lao động'],
+    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người ukraine', 'ukraine', 'hồng giáo', 'lao động'],
     'di-trú': ['di trú', 'visa', 'thị thực', 'tạm trú', 'thường trú', 'quốc tịch', 'trục xuất', 'lao động nước ngoài', 'paperwork', 'praca', 'zakit', 'zameldowanie']
 }
 
@@ -130,7 +130,8 @@ def load_sent_ids():
         ids = json.loads(content)
         logger.info(f"Loaded {len(ids)} sent IDs from Gist")
         return set(ids)
-    except:
+    except Exception as e:
+        logger.warning(f"Error loading from Gist: {e}")
         return set()
 
 def save_sent_ids(sent_ids):
@@ -147,7 +148,8 @@ def save_sent_ids(sent_ids):
         )
         urlopen(req, timeout=10)
         logger.info(f"Saved {len(sent_ids)} IDs to Gist")
-    except:
+    except Exception as e:
+        logger.warning(f"Error saving to Gist: {e}")
         with open('sent_ids.json', 'w') as f:
             json.dump(list(sent_ids), f)
         logger.info(f"Saved {len(sent_ids)} IDs locally")
@@ -175,15 +177,19 @@ def send_message(message):
             data=json.dumps({'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'HTML'}).encode(),
             headers={'Content-Type': 'application/json'}
         )
-        return urlopen(req, timeout=10).read().decode()
+        result = urlopen(req, timeout=10).read().decode()
+        logger.info(f"Sent: {len(message)} chars")
+        return result
     except Exception as e:
         logger.error(f"Send error: {e}")
         return None
 
 def main():
     logger.info("Starting news bot...")
+    logger.info(f"GIST_ID: {GIST_ID[:20] if GIST_ID else 'None'}")
     
     sent_ids = load_sent_ids()
+    logger.info(f"Already sent: {len(sent_ids)} articles")
     
     categories = {
         'vietnam': ('🇻🇳 TIN VIỆT NAM', 10),
@@ -198,9 +204,12 @@ def main():
     # Fetch all articles
     for cat, (title, count) in categories.items():
         articles = fetch_news(cat, count)
+        logger.info(f"Fetch {cat}: {len(articles)} articles")
         all_articles.extend(articles)
     
-    # Categorize articles
+    logger.info(f"Total fetched: {len(all_articles)} articles")
+    
+    # Categorize and filter
     categorized = {}
     for art in all_articles:
         art_id = hash(art['url']) % 1000000000
@@ -211,6 +220,17 @@ def main():
                     categorized[c] = []
                 categorized[c].append(art)
             all_new_ids.add(art_id)
+    
+    logger.info(f"New articles: {len(all_new_ids)}")
+    
+    if not all_new_ids:
+        logger.info("No new articles to send")
+        # Send notification that no new news
+        msg = "<b>📰 TIN TỨC HÔM NAY</b>\n\n"
+        msg += "Không có tin mới hôm nay.\n"
+        msg += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
+        send_message(msg)
+        return
     
     # Build summary messages by topic
     topic_emojis = {
@@ -229,7 +249,7 @@ def main():
     # Group by category
     for topic in ['chinh-tri', 'kinh-te', 'xã-hội', 'quốc-phòng', 'the-gioi', 'ba-lan', 'di-trú', 'khác']:
         if topic in categorized and categorized[topic]:
-            articles = categorized[topic][:3]  # Max 3 per topic
+            articles = categorized[topic][:3]
             emoji = topic_emojis.get(topic, '📰')
             
             msg = f"<b>{emoji} {topic.replace('-', ' ').upper()}</b>\n"
@@ -246,7 +266,7 @@ def main():
     summary_msg += f"🌍 Thế giới: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['bbc', 'trung quốc', 'nga', 'mỹ', 'âu'])])} tin\n"
     summary_msg += f"🇵🇱 Ba Lan: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw'])])} tin\n"
     summary_msg += f"✈️ Di trú: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['di trú', 'visa', 'thị thực', 'người ukraine'])])} tin\n"
-    summary_msg += f"\n<i>{len(all_articles)} tin mới hôm nay</i>"
+    summary_msg += f"\n<i>{len(all_new_ids)} tin mới hôm nay</i>"
     messages.append(summary_msg)
     
     # Send all messages
@@ -260,7 +280,7 @@ def main():
         save_sent_ids(sent_ids)
         logger.info(f"Updated: {len(sent_ids)} total sent IDs")
     
-    logger.info("Done!")
+    logger.info(f"Done! Sent {len(all_new_ids)} new articles")
 
 if __name__ == '__main__':
     main()
