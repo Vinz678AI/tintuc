@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Telegram News Bot - NO DUPLICATES (Simple Version)
+Telegram News Bot - TIN TỨC TIẾNG VIỆT (No Duplicates)
 - Chỉ cần 3 secrets: BOT_TOKEN, CHAT_ID, GIST_ID
 - KHÔNG cần GIST_TOKEN (dùng public gist)
 - KHÔNG cần API key
-- Tin thực từ RSS, không trùng lặp hoàn toàn
+- Tin tiếng Việt từ các nguồn Việt Nam
 """
 
 import os
@@ -29,42 +29,76 @@ if not BOT_TOKEN or not CHAT_ID:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# RSS Feeds
+# RSS Feeds TIẾNG VIỆT
 RSS_FEEDS = {
-    'vietnam': ['https://e.vnexpress.net/rss/news.rss', 'https://rss.vietnamnet.vn/rss/vn.rss'],
-    'world': ['https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en'],
-    'poland': ['https://rp.pl/rss_main'],
-    'immigration': ['https://news.globarisconsulting.com/country/poland']
+    'vietnam': [
+        'https://e.vnexpress.net/rss/news.rss',
+        'https://rss.vietnamnet.vn/rss/vn.rss',
+        'https://dantri.com.vn/rdf/rdf.aspx?id=rss_latest',
+        'https://cafef.vn/rss/tintuc.rss'
+    ],
+    'world': [
+        'https://rsshub.app/bbc/chinese'
+    ],
+    'poland': [
+        'https://rp.pl/rss_main'
+    ],
+    'immigration': [
+        'https://news.globarisconsulting.com/country/poland'
+    ]
 }
 
 def fetch_rss(url):
     try:
-        req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
         return urlopen(req, timeout=10).read().decode('utf-8', errors='ignore')
-    except:
+    except Exception as e:
+        logger.warning(f"Failed to fetch {url}: {e}")
         return None
 
 def parse_rss(xml):
     articles = []
     try:
         root = ET.fromstring(xml)
+        
+        # Atom format
         for entry in root.findall('.//{http://www.w3.org/2005/Atom}entry'):
-            title = entry.find('{http://www.w3.org/2005/Atom}title')
-            link = entry.find('{http://www.w3.org/2005/Atom}link')
-            if title is not None and link is not None:
-                articles.append({'title': title.text.strip(), 'url': link.get('href', '').strip()})
+            title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
+            link_elem = entry.find('{http://www.w3.org/2005/Atom}link')
+            
+            if title_elem is not None and link_elem is not None:
+                title = unescape(title_elem.text or '')
+                link = link_elem.get('href', '') or link_elem.text or ''
+                
+                if title and link:
+                    articles.append({
+                        'title': title.strip(),
+                        'url': link.strip()
+                    })
+        
+        # RSS 2.0 format
         if not articles:
             for item in root.findall('.//item'):
-                title = item.find('title')
-                link = item.find('link')
-                if title is not None and link is not None:
-                    articles.append({'title': title.text.strip(), 'url': link.text.strip()})
-    except:
-        pass
+                title_elem = item.find('title')
+                link_elem = item.find('link')
+                
+                if title_elem is not None and link_elem is not None:
+                    title = unescape(title_elem.text or '')
+                    link = unescape(link_elem.text or '')
+                    
+                    if title and link:
+                        articles.append({
+                            'title': title.strip(),
+                            'url': link.strip()
+                        })
+                        
+    except Exception as e:
+        logger.warning(f"Parse error: {e}")
+    
     return articles
 
 def load_sent_ids():
-    """Load sent IDs from Gist (public, no token needed)"""
+    """Load sent IDs from Gist"""
     if not GIST_ID:
         return set()
     
@@ -83,7 +117,6 @@ def save_sent_ids(sent_ids):
     if not GIST_ID:
         return
     
-    # Try with GitHub API (may work if gist is public)
     try:
         gist_url = f"https://api.github.com/gists/{GIST_ID}"
         req = Request(
@@ -95,10 +128,9 @@ def save_sent_ids(sent_ids):
         urlopen(req, timeout=10)
         logger.info(f"Saved {len(sent_ids)} IDs to Gist")
     except:
-        # If fails, save locally
         with open('sent_ids.json', 'w') as f:
             json.dump(list(sent_ids), f)
-        logger.info(f"Saved {len(sent_ids)} IDs locally (Gist save failed)")
+        logger.info(f"Saved {len(sent_ids)} IDs locally")
 
 def fetch_news(category, max_items):
     """Fetch news from RSS"""
@@ -132,7 +164,6 @@ def send_message(message):
 def main():
     logger.info("Starting news bot...")
     
-    # Load previously sent IDs
     sent_ids = load_sent_ids()
     
     categories = {
@@ -145,7 +176,7 @@ def main():
     all_new_ids = set()
     
     for cat, (title, count) in categories.items():
-        articles = fetch_news(cat, count * 2)  # Fetch extra to filter duplicates
+        articles = fetch_news(cat, count * 2)
         unique_articles = []
         
         for art in articles:
@@ -167,7 +198,6 @@ def main():
             logger.info(f"Sending {len(unique_articles)} articles for {title}")
             send_message(msg)
     
-    # Update sent IDs
     if all_new_ids:
         sent_ids.update(all_new_ids)
         save_sent_ids(sent_ids)
