@@ -4,7 +4,7 @@ Telegram News Bot - TIN TỨC TIẾNG VIỆT (Tổng hợp)
 - Chỉ cần 3 secrets: BOT_TOKEN, CHAT_ID, GIST_ID
 - Tin TIẾNG VIỆT từ các nguồn Việt Nam
 - Tổng hợp theo chủ đề
-- Không trùng lặp
+- KHÔNG TRÙNG LẶP - ĐẢM BẢO ĐỦ SỐ LƯỢNG
 """
 
 import os
@@ -29,19 +29,20 @@ if not BOT_TOKEN or not CHAT_ID:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# RSS Feeds TIẾNG VIỆT (TỪ NGUỒN CHÍNH THỨC)
+# RSS Feeds TIẾNG VIỆT
 RSS_FEEDS = {
     'vietnam': [
         'https://vnexpress.net/rss/tin-moi-nhat.rss',
         'https://vnexpress.net/rss/tin-tuc.rss',
-        'https://nhipcaudautu.vn/rss/tintuc.rss',
+        'https://dantri.com.vn/rdf/rdf.aspx?id=rss_latest',
         'https://cafef.vn/rss/homepage.cafef'
     ],
     'world': [
-        'https://rsshub.app/bbc/vietnamese'
+        'https://rsshub.app/bbc/chinese'
     ],
     'poland': [
-        'https://rp.pl/rss_main'
+        'https://rp.pl/rss_main',
+        'https://www.rp.pl/rss'
     ],
     'immigration': [
         'https://news.globarisconsulting.com/country/poland'
@@ -50,13 +51,13 @@ RSS_FEEDS = {
 
 # Chủ đề để tổng hợp
 TOPICS = {
-    'chinh-tri': ['chính trị', 'chính quyền', 'quốc hội', 'thủ tướng', 'tổng thống', 'bầu cử', 'luật', 'chủ tịch', 'bộ trưởng'],
-    'kinh-te': ['kinh tế', 'gdp', 'lạm phát', 'tiền tệ', 'ngân hàng', 'chứng khoán', 'đầu tư', 'doanh nghiệp', 'vốn', 'thị trường'],
-    'xã-hội': ['xã hội', 'giáo dục', 'y tế', 'bạo lực', 'tai nạn', 'mưa bão', 'thiên tai', 'đời sống', 'người dân'],
-    'quốc-phòng': ['quốc phòng', 'quân sự', 'biên giới', 'biển đảo', 'hải quân', 'không quân', 'qpsl', 'quân đội'],
+    'chinh-tri': ['chính trị', 'chính quyền', 'quốc hội', 'thủ tướng', 'tổng thống', 'bầu cử', 'luật', 'chủ tịch', 'bộ trưởng', 'chính phủ'],
+    'kinh-te': ['kinh tế', 'gdp', 'lạm phát', 'tiền tệ', 'ngân hàng', 'chứng khoán', 'đầu tư', 'doanh nghiệp', 'vốn', 'thị trường', 'doanh nhân'],
+    'xã-hội': ['xã hội', 'giáo dục', 'y tế', 'bạo lực', 'tai nạn', 'mưa bão', 'thiên tai', 'đời sống', 'người dân', 'trẻ em', 'người cao tuổi'],
+    'quốc-phòng': ['quốc phòng', 'quân sự', 'biên giới', 'biển đảo', 'hải quân', 'không quân', 'qpsl', 'quân đội', 'lục quân'],
     'the-gioi': ['trung quốc', 'nga', 'mỹ', 'liên hiệp âu', 'âu', 'ấn độ', 'trung đông', 'ukraine', 'israel', 'iran', 'houthi', 'xung đột'],
-    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người ukraine', 'ukraine', 'hồng giáo', 'lao động', 'visa', 'paperwork'],
-    'di-trú': ['di trú', 'visa', 'thị thực', 'tạm trú', 'thường trú', 'quốc tịch', 'trục xuất', 'lao động nước ngoài', 'zakit', 'zameldowanie', 'praca']
+    'ba-lan': ['ba lan', 'poland', 'warsaw', 'kraków', 'biên giới', 'di dân', 'người ukraine', 'ukraine', 'hồng giáo', 'lao động', 'visa', 'paperwork', 'zameldowanie', 'zakit'],
+    'di-trú': ['di trú', 'visa', 'thị thực', 'tạm trú', 'thường trú', 'quốc tịch', 'trục xuất', 'lao động nước ngoài', 'work permit', 'karta pobytu']
 }
 
 def fetch_rss(url):
@@ -160,21 +161,76 @@ def save_sent_ids(sent_ids):
             json.dump(list(sent_ids), f)
         logger.info(f"Saved {len(sent_ids)} IDs locally")
 
-def fetch_news(category, max_items):
+def fetch_news_with_dedup(category, required_count, sent_ids):
+    """
+    Fetch news and ensure we have enough unique articles
+    If duplicate found, keep fetching until we get required count
+    """
     articles = []
-    seen = set()
+    seen_urls = set()
+    all_candidates = []
     
+    # Fetch from multiple sources
     for feed in RSS_FEEDS.get(category, []):
-        if len(articles) >= max_items:
-            break
         xml = fetch_rss(feed)
         if xml:
             for art in parse_rss(xml):
-                if art['url'] not in seen:
-                    seen.add(art['url'])
-                    articles.append(art)
+                if art['url'] not in seen_urls:
+                    seen_urls.add(art['url'])
+                    all_candidates.append(art)
     
-    return articles[:max_items]
+    logger.info(f"Category {category}: Fetched {len(all_candidates)} articles from RSS")
+    
+    # Filter out duplicates and collect unique articles
+    for art in all_candidates:
+        art_id = hash(art['url']) % 1000000000
+        if art_id not in sent_ids and art['title']:
+            articles.append(art)
+        if len(articles) >= required_count:
+            break
+    
+    logger.info(f"Category {category}: Found {len(articles)} unique articles")
+    
+    # If not enough articles, try to fetch more from alternate sources
+    if len(articles) < required_count:
+        logger.warning(f"Category {category}: Only {len(articles)} articles, need {required_count}. Fetching more...")
+        
+        # Additional sources for Vietnam
+        extra_feeds = {
+            'vietnam': [
+                'https://tuoitre.vn/rss/tin-moi-nhat.rss',
+                'https://thanhnien.vn/rss/latest.rss',
+                'https://plo.vn/rss/tin-moi-nhat.rss'
+            ],
+            'world': [
+                'https://rsshub.app/wsj/headlines',
+                'https://rsshub.app/cnn/top'
+            ],
+            'poland': [
+                'https://wyborcza.pl/rss.xml',
+                'https://tvn24.pl/rss'
+            ]
+        }
+        
+        for feed in extra_feeds.get(category, []):
+            xml = fetch_rss(feed)
+            if xml:
+                for art in parse_rss(xml):
+                    if art['url'] not in seen_urls:
+                        seen_urls.add(art['url'])
+                        art_id = hash(art['url']) % 1000000000
+                        if art_id not in sent_ids and art['title']:
+                            articles.append(art)
+                            if len(articles) >= required_count:
+                                break
+            if len(articles) >= required_count:
+                break
+    
+    # If still not enough, take all available
+    if len(articles) < required_count:
+        logger.warning(f"Category {category}: Only got {len(articles)}/{required_count} articles")
+    
+    return articles[:max(required_count, len(articles))]
 
 def send_message(message):
     try:
@@ -191,7 +247,7 @@ def send_message(message):
         return None
 
 def main():
-    logger.info("Starting Vietnamese news bot...")
+    logger.info("Starting Vietnamese news bot with guaranteed count...")
     logger.info(f"GIST_ID: {GIST_ID[:20] if GIST_ID else 'None'}")
     
     sent_ids = load_sent_ids()
@@ -199,7 +255,7 @@ def main():
     
     categories = {
         'vietnam': ('🇻🇳 TIN VIỆT NAM', 15),
-        'world': ('🌍 TIN THẾ GIỚI', 10),
+        'world': ('🌍 TIN THẾ GIỚI', 15),
         'poland': ('🇵🇱 TIN BA LAN', 10),
         'immigration': ('✈️ TIN DI TRÚ BA LAN', 5)
     }
@@ -207,15 +263,15 @@ def main():
     all_new_ids = set()
     all_articles = []
     
-    # Fetch all articles
+    # Fetch articles for each category with guaranteed count
     for cat, (title, count) in categories.items():
-        articles = fetch_news(cat, count)
-        logger.info(f"Fetch {cat}: {len(articles)} articles")
+        articles = fetch_news_with_dedup(cat, count, sent_ids)
+        logger.info(f"Fetch {cat}: {len(articles)} articles (required: {count})")
         all_articles.extend(articles)
     
     logger.info(f"Total fetched: {len(all_articles)} articles")
     
-    # Categorize and filter
+    # Categorize articles
     categorized = {}
     for art in all_articles:
         art_id = hash(art['url']) % 1000000000
@@ -227,7 +283,7 @@ def main():
                 categorized[c].append(art)
             all_new_ids.add(art_id)
     
-    logger.info(f"New articles: {len(all_new_ids)}")
+    logger.info(f"New articles to send: {len(all_new_ids)}")
     
     if not all_new_ids:
         logger.info("No new articles to send")
@@ -251,10 +307,10 @@ def main():
     
     messages = []
     
-    # Group by category
+    # Group by category - send all unique articles
     for topic in ['chinh-tri', 'kinh-te', 'xã-hội', 'quốc-phòng', 'the-gioi', 'ba-lan', 'di-trú', 'khác']:
         if topic in categorized and categorized[topic]:
-            articles = categorized[topic][:3]
+            articles = categorized[topic][:5]  # Up to 5 per topic
             emoji = topic_emojis.get(topic, '📰')
             
             msg = f"<b>{emoji} {topic.replace('-', ' ').upper()}</b>\n"
@@ -267,7 +323,7 @@ def main():
     
     # Also send summary by source
     summary_msg = f"<b>📰 TÓM TẮT TIN TỨC</b>\n\n"
-    summary_msg += f"🇻🇳 Việt Nam: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['vnexpress', 'dantri', 'cafef', 'nhip caudau'])])} tin\n"
+    summary_msg += f"🇻🇳 Việt Nam: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['vnexpress', 'dantri', 'cafef', 'nhip caudau', 'tuoitre', 'thanhnien'])])} tin\n"
     summary_msg += f"🌍 Thế giới: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['bbc', 'trung quốc', 'nga', 'mỹ', 'âu'])])} tin\n"
     summary_msg += f"🇵🇱 Ba Lan: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw'])])} tin\n"
     summary_msg += f"✈️ Di trú: {len([a for a in all_articles if any(k in a['title'].lower() for k in ['di trú', 'visa', 'thị thực', 'người ukraine'])])} tin\n"
