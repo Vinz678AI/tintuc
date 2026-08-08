@@ -2,7 +2,7 @@
 """
 Telegram News Bot - TIN TỨC TIẾNG VIỆT (TỔNG HỢP)
 - Chỉ cần 3 secrets: BOT_TOKEN, CHAT_ID, GIST_ID
-- TẤT CẢ tin bằng TIẾNG VIỆT
+- TẤT CẢ tin bằng TIẾNG VIỆT (VN + World + Ba Lan)
 - Không trùng lặp
 """
 
@@ -28,7 +28,7 @@ if not BOT_TOKEN or not CHAT_ID:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# RSS Feeds - CHỈ NGUỒN TIẾNG VIỆT
+# RSS Feeds - TIẾNG VIỆT + BA LAN
 RSS_FEEDS = {
     'vietnam': [
         'https://vnexpress.net/rss/tin-moi-nhat.rss',
@@ -45,10 +45,10 @@ RSS_FEEDS = {
         'https://rsshub.app/voa/vietnamese'
     ],
     'poland': [
-        'https://rsshub.app/bbc/vietnamese/poland'
+        'https://vnexpress.net/rss/quoc-te.rss'
     ],
     'immigration': [
-        'https://rsshub.app/bbc/vietnamese'
+        'https://vnexpress.net/rss/quoc-te.rss'
     ]
 }
 
@@ -128,7 +128,7 @@ def send_message(message):
 
 def main():
     logger.info("="*50)
-    logger.info("Starting Vietnamese News Bot (ALL VIETNAMESE)...")
+    logger.info("Starting Vietnamese News Bot...")
     logger.info("="*50)
     
     sent_ids = load_sent_ids()
@@ -137,7 +137,7 @@ def main():
     all_articles = []
     seen_urls = set()
     
-    # Fetch all Vietnamese news sources
+    # Fetch all sources
     for category, feeds in RSS_FEEDS.items():
         logger.info(f"\nFetching {category}...")
         for feed in feeds:
@@ -163,19 +163,25 @@ def main():
         send_message(msg)
         return
     
-    # Group articles
+    # Group articles by category
     vn_articles = [a for a in unique_articles if any(d in a['url'] for d in ['vnexpress', 'cafef', 'nhipcaudautu', 'tuoitre', 'thanhnien'])]
-    world_articles = [a for a in unique_articles if 'bbc' in a['url'] or 'voa' in a['url']]
+    bbc_articles = [a for a in unique_articles if 'bbc' in a['url']]
+    voa_articles = [a for a in unique_articles if 'voa' in a['url']]
+    poland_articles = [a for a in unique_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw', 'krakow'])]
     
-    logger.info(f"Vietnam: {len(vn_articles)}, World: {len(world_articles)}")
+    # Remove poland from world if already categorized
+    world_articles = [a for a in bbc_articles + voa_articles if a not in poland_articles]
+    
+    logger.info(f"Vietnam: {len(vn_articles)}, World: {len(world_articles)}, Poland: {len(poland_articles)}")
     
     new_ids = set()
     messages = []
     
-    # Summary message
+    # Summary
     summary = f"<b>📰 TIN TỨC HÔM NAY</b>\n\n"
     summary += f"🇻🇳 Việt Nam: {len(vn_articles)} tin\n"
     summary += f"🌍 Thế giới: {len(world_articles)} tin\n"
+    summary += f"🇵🇱 Ba Lan: {len(poland_articles)} tin\n"
     summary += f"\n<i>Tổng: {len(unique_articles)} tin mới</i>\n"
     summary += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
     messages.append(summary)
@@ -191,10 +197,21 @@ def main():
         msg += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
         messages.append(msg)
     
-    # World news
+    # World news (excluding Poland)
     if world_articles:
         msg = "<b>🌍 TIN THẾ GIỚI</b>\n\n"
         for i, art in enumerate(world_articles[:10], 1):
+            t = art['title'][:75] + '...' if len(art['title']) > 75 else art['title']
+            msg += f"{i}. {t}\n"
+            msg += f"🔗 {art['url']}\n\n"
+            new_ids.add(hash(art['url']) % 1000000000)
+        msg += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
+        messages.append(msg)
+    
+    # Poland news
+    if poland_articles:
+        msg = "<b>🇵🇱 TIN BA LAN</b>\n\n"
+        for i, art in enumerate(poland_articles[:8], 1):
             t = art['title'][:75] + '...' if len(art['title']) > 75 else art['title']
             msg += f"{i}. {t}\n"
             msg += f"🔗 {art['url']}\n\n"
