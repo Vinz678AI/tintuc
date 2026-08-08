@@ -1,33 +1,19 @@
-name: Daily News Bot
+name: Daily News (Simple - No Duplicates)
 
 on:
-  # Chạy mỗi ngày lúc 10:00 AM UTC (8:00 AM giờ Ba Lan, 4:00 PM Việt Nam)
   schedule:
-    - cron: '0 8 * * *'
-  
-  # Cho phép chạy thủ công
+    - cron: '0 8 * * *'  # 10:00 AM Poland time
   workflow_dispatch:
 
 jobs:
   send-news:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: pip install requests
-      
-      - name: Run news bot
-        run: python telegram_news_bot.py
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-          GIST_ID: ${{ secrets.GIST_ID }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: actions/checkout@v4
+    - name: Send news
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        GIST_ID: ${{ secrets.GIST_ID }}
+      run: |
+        python telegram_news_bot.py
