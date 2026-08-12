@@ -34,15 +34,13 @@ RSS_FEEDS = {
         'https://vnexpress.net/rss/tin-moi-nhat.rss',
         'https://vnexpress.net/rss/tin-tuc.rss',
         'https://vnexpress.net/rss/market.rss',
-        'https://vnexpress.net/rss/quoc-te.rss',
         'https://cafef.vn/rss/homepage.cafef',
         'https://nhipcaudautu.vn/rss/tintuc.rss',
         'https://tuoitre.vn/rss/tin-moi-nhat.rss',
         'https://thanhnien.vn/rss/latest.rss'
     ],
     'world': [
-        'https://rsshub.app/bbc/vietnamese',
-        'https://rsshub.app/voa/vietnamese'
+        'https://vnexpress.net/rss/quoc-te.rss'
     ],
     'poland': [
         'https://vnexpress.net/rss/quoc-te.rss'
@@ -164,13 +162,16 @@ def main():
         return
     
     # Group articles by category
-    vn_articles = [a for a in unique_articles if any(d in a['url'] for d in ['vnexpress', 'cafef', 'nhipcaudautu', 'tuoitre', 'thanhnien'])]
-    bbc_articles = [a for a in unique_articles if 'bbc' in a['url']]
-    voa_articles = [a for a in unique_articles if 'voa' in a['url']]
-    poland_articles = [a for a in unique_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw', 'krakow'])]
+    vn_articles = [a for a in unique_articles if any(d in a['url'] for d in ['vnexpress', 'cafef', 'nhipcaudautu', 'tuoitre', 'thanhnien']) and not any(k in a['title'].lower() for k in ['quốc tế', 'quoc te', 'hoa ky', 'hong kong', 'ma Cao'])]
     
-    # Remove poland from world if already categorized
-    world_articles = [a for a in bbc_articles + voa_articles if a not in poland_articles]
+    # World articles (international news from VNExpress)
+    world_articles = [a for a in unique_articles if 'quoc-te' in a['url'] or any(k in a['title'].lower() for k in ['trung quoc', 'nha", 'hàn quốc', 'hàn', 'nhật', 'japan', 'đức', 'germany', 'pháp', 'france', 'mỹ', 'usa', 'hoạt kỳ', 'hong kong', 'ma cao', 'singapore', 'thái', 'thailand'])]
+    
+    # Poland articles
+    poland_articles = [a for a in unique_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw', 'krakow', 'ukraine', 'biên giới', 'di dân', 'visa', 'người україna'])]
+    
+    # Remove poland from world
+    world_articles = [a for a in world_articles if a not in poland_articles]
     
     logger.info(f"Vietnam: {len(vn_articles)}, World: {len(world_articles)}, Poland: {len(poland_articles)}")
     
@@ -197,7 +198,7 @@ def main():
         msg += f"⏰ {datetime.now(timezone.utc).strftime('%d/%m %H:%M UTC')}"
         messages.append(msg)
     
-    # World news (excluding Poland)
+    # World news
     if world_articles:
         msg = "<b>🌍 TIN THẾ GIỚI</b>\n\n"
         for i, art in enumerate(world_articles[:10], 1):
