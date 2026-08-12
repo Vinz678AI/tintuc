@@ -28,7 +28,7 @@ if not BOT_TOKEN or not CHAT_ID:
 
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# RSS Feeds - TIẾNG VIỆT + BA LAN
+# RSS Feeds - TIẾNG VIỆT
 RSS_FEEDS = {
     'vietnam': [
         'https://vnexpress.net/rss/tin-moi-nhat.rss',
@@ -43,9 +43,6 @@ RSS_FEEDS = {
         'https://vnexpress.net/rss/quoc-te.rss'
     ],
     'poland': [
-        'https://vnexpress.net/rss/quoc-te.rss'
-    ],
-    'immigration': [
         'https://vnexpress.net/rss/quoc-te.rss'
     ]
 }
@@ -162,13 +159,13 @@ def main():
         return
     
     # Group articles by category
-    vn_articles = [a for a in unique_articles if any(d in a['url'] for d in ['vnexpress', 'cafef', 'nhipcaudautu', 'tuoitre', 'thanhnien']) and not any(k in a['title'].lower() for k in ['quốc tế', 'quoc te', 'hoa ky', 'hong kong', 'ma Cao'])]
+    vn_articles = [a for a in unique_articles if any(d in a['url'] for d in ['vnexpress', 'cafef', 'nhipcaudautu', 'tuoitre', 'thanhnien']) and not any(k in a['title'].lower() for k in ['quốc tế', 'quoc te'])]
     
     # World articles (international news from VNExpress)
-    world_articles = [a for a in unique_articles if 'quoc-te' in a['url'] or any(k in a['title'].lower() for k in ['trung quoc', 'nha", 'hàn quốc', 'hàn', 'nhật', 'japan', 'đức', 'germany', 'pháp', 'france', 'mỹ', 'usa', 'hoạt kỳ', 'hong kong', 'ma cao', 'singapore', 'thái', 'thailand'])]
+    world_articles = [a for a in unique_articles if 'quoc-te' in a['url'] or any(k in a['title'].lower() for k in ['trung quoc', 'nga', 'hàn quốc', 'hàn', 'nhật', 'japan', 'đức', 'germany', 'pháp', 'france', 'mỹ', 'usa', 'hong kong', 'ma cao', 'singapore', 'thái', 'thailand'])]
     
     # Poland articles
-    poland_articles = [a for a in unique_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw', 'krakow', 'ukraine', 'biên giới', 'di dân', 'visa', 'người україna'])]
+    poland_articles = [a for a in unique_articles if any(k in a['title'].lower() for k in ['ba lan', 'poland', 'warsaw', 'krakow', 'ukraine', 'biên giới', 'di dân', 'visa', 'người ukraine'])]
     
     # Remove poland from world
     world_articles = [a for a in world_articles if a not in poland_articles]
